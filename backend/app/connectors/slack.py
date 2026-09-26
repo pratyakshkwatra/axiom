@@ -11,17 +11,8 @@ class SlackConnector(Connector):
     def sync_entities(self, organization_id: str) -> List[Dict]:
         token = os.getenv("SLACK_BOT_TOKEN")
         if not token:
-            print("WARNING: Slack credentials missing, generating massive mock data for knowledge graph.")
-            entities = []
-            for i in range(1, 51):
-                entities.append({
-                    "external_id": f"C01A2B3C4D{i}",
-                    "entity_type": "project",
-                    "name": f"#eng-team-{i}",
-                    "description": f"Discussion channel for engineering team {i}.",
-                    "metadata_": {"members": 10 + i}
-                })
-            return entities
+            print("WARNING: Slack credentials missing, returning empty")
+            return []
             
         headers = {"Authorization": f"Bearer {token}"}
         try:
@@ -44,18 +35,5 @@ class SlackConnector(Connector):
             return []
 
     def sync_events(self, organization_id: str) -> List[Dict]:
-        token = os.getenv("SLACK_BOT_TOKEN")
-        if not token:
-            events = []
-            import random
-            for i in range(1, 801):
-                channel_id = random.randint(1, 50)
-                events.append({
-                    "external_id": f"msg-{10000 + i}",
-                    "event_type": "message",
-                    "title": f"Message in #eng-team-{channel_id}",
-                    "content": f"Discussing architecture for feature {i%50}. Let's make sure we handle edge cases properly.",
-                    "metadata_": {"author": f"User-{i%30}", "channel": f"#eng-team-{channel_id}"}
-                })
-            return events
+        # Message history ingestion (conversations.history) not implemented yet
         return []

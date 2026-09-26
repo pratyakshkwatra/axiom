@@ -29,14 +29,14 @@ class FreshserviceConnector(Connector):
         headers, domain = self._get_headers()
         if not headers:
             return []
-            
+
         url = f"https://{domain}/api/v2/tickets"
+        entities = []
         try:
             res = requests.get(url, headers=headers, timeout=10)
             res.raise_for_status()
             data = res.json().get("tickets", [])
-            
-            entities = []
+
             for t in data:
                 entities.append({
                     "external_id": f"INC-{t.get('id')}",
@@ -44,34 +44,38 @@ class FreshserviceConnector(Connector):
                     "name": t.get("subject", "No Subject"),
                     "description": t.get("description_text", ""),
                     "metadata_": {
-                        "status": t.get("status"), 
+                        "status": t.get("status"),
                         "priority": t.get("priority"),
                         "requester_id": t.get("requester_id")
                     }
                 })
         except Exception as e:
             print(f"Failed to fetch real Freshservice tickets: {e}")
-            
-        print("Appending massive mock Freshservice data for knowledge graph...")
-        for i in range(1, 301):
-            entities.append({
-                "external_id": f"INC-{8000 + i}",
-                "entity_type": "ticket",
-                "name": f"IT Request #{i} - Access Issue",
-                "description": f"User is requesting access to internal tool {i%10}. Needs manager approval.",
-                "metadata_": {"status": "Pending" if i%2==0 else "Resolved", "requester": f"Employee-{i%50}"}
-            })
-            
+
         return entities
 
     def sync_events(self, organization_id: str) -> List[Dict]:
+        headers, domain = self._get_headers()
+        if not headers:
+            return []
+
         events = []
-        for i in range(1, 501):
-            events.append({
-                "external_id": f"note-INC-{8000 + (i%150)}-{i}",
-                "event_type": "note",
-                "title": f"Note on INC-{8000 + (i%150)}",
-                "content": f"Followed up with the user. Provisioning access now. Wait time approx {i%5} hours.",
-                "metadata_": {"author": f"Support Agent {i%10}", "ticket": f"INC-{8000 + (i%150)}"}
-            })
+        try:
+            res = requests.get(f"https://{domain}/api/v2/tickets", headers=headers, timeout=10)
+            res.raise_for_status()
+            for t in res.json().get("tickets", []):
+                ticket_id = t.get("id")
+                conv_res = requests.get(f"https://{domain}/api/v2/tickets/{ticket_id}/conversations", headers=headers, timeout=10)
+                conv_res.raise_for_status()
+                for c in conv_res.json().get("conversations", []):
+                    events.append({
+                        "external_id": f"note-INC-{ticket_id}-{c.get('id')}",
+                        "event_type": "note",
+                        "title": f"Note on INC-{ticket_id}",
+                        "content": c.get("body_text", ""),
+                        "metadata_": {"author_id": c.get("user_id"), "ticket": f"INC-{ticket_id}", "private": c.get("private")}
+                    })
+        except Exception as e:
+            print(f"Failed to fetch real Freshservice conversations: {e}")
+
         return events
