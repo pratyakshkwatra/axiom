@@ -23,7 +23,7 @@ class AxiomAgent:
             prompt_with_context = f"Here is some organizational context retrieved from the systems (e.g. Freshservice):\n{context}\n\nUser Request: {message}"
 
         response = self.client.messages.create(
-            model="claude-5-sonnet-latest",
+            model="claude-sonnet-5",
             max_tokens=1024,
             system=system_prompt,
             messages=[
