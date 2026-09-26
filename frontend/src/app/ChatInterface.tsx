@@ -2,6 +2,27 @@
 import React, { useState, useEffect, useRef } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import KnowledgeGraph from "./KnowledgeGraph";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+const markdownComponents = {
+  h1: (props: any) => <h1 className="text-xl font-semibold text-[#18181B] mt-4 mb-2" {...props} />,
+  h2: (props: any) => <h2 className="text-lg font-semibold text-[#18181B] mt-4 mb-2" {...props} />,
+  h3: (props: any) => <h3 className="text-base font-semibold text-[#18181B] mt-3 mb-1" {...props} />,
+  p: (props: any) => <p className="mb-3 last:mb-0" {...props} />,
+  ul: (props: any) => <ul className="list-disc pl-6 mb-3 space-y-1" {...props} />,
+  ol: (props: any) => <ol className="list-decimal pl-6 mb-3 space-y-1" {...props} />,
+  li: (props: any) => <li className="leading-7" {...props} />,
+  strong: (props: any) => <strong className="font-semibold text-[#18181B]" {...props} />,
+  a: (props: any) => <a className="text-[#3B82F6] underline" target="_blank" rel="noreferrer" {...props} />,
+  code: (props: any) => <code className="bg-[#F4F4F5] rounded px-1.5 py-0.5 text-[14px] font-mono" {...props} />,
+  pre: (props: any) => <pre className="bg-[#F4F4F5] rounded-xl p-4 mb-3 overflow-x-auto text-[14px]" {...props} />,
+  blockquote: (props: any) => <blockquote className="border-l-4 border-[#E4E4E7] pl-4 text-[#71717A] mb-3" {...props} />,
+  hr: () => <hr className="my-4 border-[#E4E4E7]" />,
+  table: (props: any) => <div className="overflow-x-auto mb-3"><table className="w-full text-sm border border-[#E4E4E7] rounded-lg" {...props} /></div>,
+  th: (props: any) => <th className="text-left font-semibold text-[#18181B] bg-[#FAFAFA] border-b border-[#E4E4E7] px-3 py-2" {...props} />,
+  td: (props: any) => <td className="border-b border-[#F4F4F5] px-3 py-2" {...props} />,
+};
 
 export default function ChatInterface({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const [messages, setMessages] = useState<any[]>([]);
@@ -9,6 +30,7 @@ export default function ChatInterface({ onOpenSettings }: { onOpenSettings?: () 
   const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [progressStep, setProgressStep] = useState<string>("");
+  const [userRole, setUserRole] = useState("ENGINEER");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -45,7 +67,7 @@ export default function ChatInterface({ onOpenSettings }: { onOpenSettings?: () 
       const res = await fetch("http://localhost:8000/api/memory/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: textToSend, organization_id: "org-1", user_role: "ENGINEERING_MANAGER" })
+        body: JSON.stringify({ query: textToSend, organization_id: "org-1", user_role: userRole })
       });
       const data = await res.json();
       
@@ -303,6 +325,23 @@ export default function ChatInterface({ onOpenSettings }: { onOpenSettings?: () 
       {/* INPUT AREA */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-[#FAFAFA] via-[#FAFAFA] to-transparent pt-24 pb-8 px-6 flex justify-center z-20 pointer-events-none">
         <div className="w-full max-w-[700px] relative pointer-events-auto flex flex-col items-center">
+          <div className="w-full flex items-center gap-2 mb-3 text-xs font-medium text-[#71717A]">
+            <span>Signed in as</span>
+            {[
+              { id: "ENGINEER", label: "Engineer" },
+              { id: "SUPPORT_AGENT", label: "Support Agent" },
+              { id: "CONTRACTOR", label: "Contractor" },
+              { id: "HR_ADMIN", label: "HR Admin" },
+            ].map((r) => (
+              <button
+                key={r.id}
+                onClick={() => setUserRole(r.id)}
+                className={`rounded-full px-3 py-1 border transition-colors ${userRole === r.id ? 'bg-[#18181B] border-[#18181B] text-white' : 'bg-white border-[#E4E4E7] hover:border-[#3F3F46] hover:text-[#18181B]'}`}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
           <div className="w-full relative flex items-center bg-white border border-[#E4E4E7] shadow-sm rounded-2xl overflow-hidden transition-all duration-300 focus-within:border-[#71717A] focus-within:shadow-md">
             <input 
               type="text" 
@@ -344,9 +383,9 @@ function StreamedText({ text, isNew }: { text: string, isNew?: boolean }) {
     
     let currentIndex = 0;
     const interval = setInterval(() => {
+      currentIndex += 6;
       setDisplayedText(text.slice(0, currentIndex));
-      currentIndex++;
-      if (currentIndex > text.length) {
+      if (currentIndex >= text.length) {
         clearInterval(interval);
       }
     }, 15);
@@ -354,7 +393,7 @@ function StreamedText({ text, isNew }: { text: string, isNew?: boolean }) {
     return () => clearInterval(interval);
   }, [text, isNew]);
 
-  return <span>{displayedText}</span>;
+  return <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{displayedText}</ReactMarkdown>;
 }
 
 // ==========================================

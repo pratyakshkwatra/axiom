@@ -10,6 +10,6 @@ python-dotenv
 psycopg2-binary
 passlib[bcrypt]
 python-jose[cryptography]
-mcp
+mcp<2
 sentence-transformers
 torch

@@ -91,7 +91,27 @@ def mock_slack():
         })
     return entities, events
 
+def mock_hris():
+    entities = []
+    for i in range(10):
+        entities.append({
+            "external_id": f"EMP-{i}",
+            "entity_type": "employee_record",
+            "name": f"Employee record - Dev-{i} (Payments team)",
+            "description": f"Dev-{i}, payment gateway engineer. Performance review: {'exceeds' if i%2 else 'meets'} expectations. On-call for checkout flow incidents.",
+            "metadata_": {"manager": "Eng Manager Payments", "mock": True}
+        })
+        entities.append({
+            "external_id": f"COMP-{i}",
+            "entity_type": "compensation",
+            "name": f"Compensation - Dev-{i} (Payments team)",
+            "description": f"Dev-{i} salary band L{3 + i%3}, base {90 + i*7}k USD, retention bonus pending after payment gateway incident work.",
+            "metadata_": {"mock": True}
+        })
+    return entities, []
+
 MOCK_SOURCES = {
+    "hris": mock_hris,
     "freshservice": mock_freshservice,
     "jira": mock_jira,
     "slack": mock_slack,

@@ -124,9 +124,15 @@ def chat_with_agent(query_data: SearchQuery, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Context search failed: {str(e)}")
 
     # 2. Format Context
-    context_str = "Context:\n"
+    context_str = f"Context (the user is signed in as role {query_data.user_role}):\n"
     for e in results.get("entities", []):
-        context_str += f"Entity: {e.get('name')} (Type: {e.get('entity_type')}, Source: {e.get('source')}) - {e.get('description')} Metadata: {e.get('metadata_')}\n"
+        context_str += f"Entity: {e.get('name')} (Type: {e.get('type')}, Source: {e.get('source')}) - {e.get('description')} Metadata: {e.get('metadata')}\n"
+    for ev in results.get("events", []):
+        context_str += f"Event: {ev.get('title')} (Type: {ev.get('type')}, Source: {ev.get('source')}) - {ev.get('content')}\n"
+    withheld = results.get("withheld", {})
+    if withheld:
+        blocked = ", ".join(f"{count} {kind}" for kind, count in withheld.items())
+        context_str += f"\nPOLICY ENFORCEMENT: AXIOM withheld {sum(withheld.values())} matching records ({blocked}) because role {query_data.user_role} is not authorized to read them. You MUST tell the user that these records exist but were withheld by access policy, never guess their contents, and include <ui_component>permission_check</ui_component>.\n"
     
     # 3. Call Claude
     client = Anthropic(
@@ -180,7 +186,7 @@ User Question: {query_data.query}"""
             raise ValueError("ANTHROPIC_API_KEY is not set")
             
         message = client.messages.create(
-            model="claude-3-haiku-20240307",
+            model="claude-haiku-4-5-20251001",
             max_tokens=1000,
             messages=[{"role": "user", "content": prompt}]
         )
