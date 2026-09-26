@@ -1,5 +1,7 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+
+const API_URL = "http://localhost:8000";
 
 export default function Settings({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<"account" | "integrations" | "access">("account");
@@ -68,27 +70,44 @@ export default function Settings({ onClose }: { onClose: () => void }) {
     showToast("Agent key revoked globally.");
   };
 
-  const handleGeneratePolicy = () => {
-    if (!nlpPolicyInput.trim()) return;
-    setIsGeneratingPolicy(true);
-    setTimeout(() => {
-      setIsGeneratingPolicy(false);
-      setGeneratedPolicies([...generatedPolicies, {
-        id: Date.now(),
-        intent: nlpPolicyInput,
-        json: `{
-  "Effect": "Allow",
-  "Action": ["jira:ViewTicket"],
-  "Condition": { "Role": "Engineer" }
-}`
-      }]);
-      setNlpPolicyInput("");
-      showToast("NLP Policy translated to JSON RBAC successfully.");
-    }, 1500);
+  const loadPolicies = async () => {
+    try {
+      const res = await fetch(`${API_URL}/api/policies/?organization_id=org-1`);
+      const data = await res.json();
+      setGeneratedPolicies(data.policies || []);
+    } catch (e) {
+      console.error("Failed to load policies", e);
+    }
   };
 
-  const handleDeletePolicy = (id: number) => {
-    setGeneratedPolicies(generatedPolicies.filter(p => p.id !== id));
+  useEffect(() => {
+    loadPolicies();
+  }, []);
+
+  const handleGeneratePolicy = async () => {
+    if (!nlpPolicyInput.trim()) return;
+    setIsGeneratingPolicy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/policies/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ natural_language: nlpPolicyInput, organization_id: "org-1" })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to compile policy");
+      setNlpPolicyInput("");
+      await loadPolicies();
+      showToast(`Policy compiled into ${data.policies.length} enforceable rule(s) and is now active.`);
+    } catch (e: any) {
+      showToast(`Policy failed: ${e.message}`);
+    } finally {
+      setIsGeneratingPolicy(false);
+    }
+  };
+
+  const handleDeletePolicy = async (id: string) => {
+    await fetch(`${API_URL}/api/policies/${id}`, { method: "DELETE" });
+    await loadPolicies();
     showToast("Policy permanently deleted.");
   };
 
@@ -333,7 +352,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                         {generatedPolicies.map(pol => (
                           <div key={pol.id} className="bg-white border border-[#E4E4E7] rounded-xl overflow-hidden shadow-sm">
                             <div className="px-4 py-3 bg-[#F8F9FA] border-b border-[#E4E4E7] flex justify-between items-center">
-                              <p className="text-sm font-semibold text-[#18181B]">"{pol.intent}"</p>
+                              <p className="text-sm font-semibold text-[#18181B]">"{pol.text}"</p>
                               <div className="flex gap-2 items-center">
                                 <span className="px-2 py-1 bg-[#ECFDF5] text-[#059669] text-[10px] font-bold uppercase rounded border border-[#A7F3D0]">Active</span>
                                 <button onClick={() => handleDeletePolicy(pol.id)} className="text-[#A1A1AA] hover:text-[#DC2626] transition-colors p-1" title="Delete Policy">
@@ -342,7 +361,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
                               </div>
                             </div>
                             <pre className="p-4 text-xs font-mono text-[#3F3F46] overflow-x-auto">
-                              {pol.json}
+                              {JSON.stringify({ effect: pol.effect, role: pol.allowed_role, action: pol.action, resource: pol.resource_type }, null, 2)}
                             </pre>
                           </div>
                         ))}

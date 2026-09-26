@@ -8,6 +8,16 @@ from ..services.policy_engine import parse_policy
 
 router = APIRouter()
 
+def _serialize(p: AccessPolicy) -> dict:
+    return {
+        "id": p.id,
+        "text": p.natural_language,
+        "resource_type": p.resource_type,
+        "action": p.action,
+        "allowed_role": p.allowed_role,
+        "effect": p.effect
+    }
+
 class PolicyCreate(BaseModel):
     natural_language: str
     organization_id: str
@@ -15,18 +25,21 @@ class PolicyCreate(BaseModel):
 @router.post("/", response_model=dict)
 def create_policy(policy: PolicyCreate, db: Session = Depends(get_db)):
     try:
-        new_policy = parse_policy(policy.natural_language, policy.organization_id, db)
-        return {
-            "id": new_policy.id,
-            "resource_type": new_policy.resource_type,
-            "action": new_policy.action,
-            "allowed_role": new_policy.allowed_role,
-            "effect": new_policy.effect
-        }
+        new_policies = parse_policy(policy.natural_language, policy.organization_id, db)
+        return {"policies": [_serialize(p) for p in new_policies]}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.get("/")
 def list_policies(organization_id: str, db: Session = Depends(get_db)):
     policies = db.query(AccessPolicy).filter(AccessPolicy.organization_id == organization_id).all()
-    return {"policies": [{"id": p.id, "text": p.natural_language, "resource": p.resource_type, "role": p.allowed_role} for p in policies]}
+    return {"policies": [_serialize(p) for p in policies]}
+
+@router.delete("/{policy_id}")
+def delete_policy(policy_id: str, db: Session = Depends(get_db)):
+    policy = db.query(AccessPolicy).filter(AccessPolicy.id == policy_id).first()
+    if not policy:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    db.delete(policy)
+    db.commit()
+    return {"deleted": policy_id}

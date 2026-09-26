@@ -4,32 +4,40 @@ import os
 from ..models.policy import AccessPolicy
 from sqlalchemy.orm import Session
 import uuid
+from typing import List
 
 # Initialize Anthropic client
-anthropic_client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+anthropic_client = Anthropic(
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
+    default_headers={"anthropic-workspace-id": os.getenv("ANTHROPIC_WORKSPACE_ID")} if os.getenv("ANTHROPIC_WORKSPACE_ID") else {}
+)
 
-def parse_policy(nlp_text: str, organization_id: str, db: Session) -> AccessPolicy:
+RESOURCE_TYPES = ["ticket", "note", "project", "message", "employee_record", "compensation", "all"]
+ROLES = ["ENGINEER", "SUPPORT_AGENT", "CONTRACTOR", "HR_ADMIN"]
+
+def parse_policy(nlp_text: str, organization_id: str, db: Session) -> List[AccessPolicy]:
     """
-    Uses LLM to convert natural language into a structured AccessPolicy.
+    Uses LLM to convert natural language into structured AccessPolicy rows (one per resource type).
     """
     prompt = f"""
-    Convert this natural language access policy into a structured JSON object.
+    Convert this natural language access policy into structured rules.
     Policy: "{nlp_text}"
-    
-    Output exactly valid JSON with the following keys:
-    - resource_type: The type of resource being accessed (e.g., 'ticket', 'project', 'compensation', 'all').
-    - action: The action allowed (e.g., 'read', 'write', 'all').
-    - allowed_role: The role that is allowed (e.g., 'HR_ADMIN', 'ENGINEERING_MANAGER', 'EMPLOYEE').
-    - allowed_team: The specific team allowed, if any. Otherwise null.
-    - effect: 'ALLOW' or 'DENY'. (Usually policies state who is allowed, so effect is ALLOW for that role, effectively DENYing others later).
+
+    Output exactly valid JSON: an array of objects, one per resource type the policy covers, each with keys:
+    - resource_type: one of {RESOURCE_TYPES}. Map synonyms: salary/pay -> compensation, HR/employee info -> employee_record,
+      Jira issues/Freshservice tickets -> ticket, comments/ticket notes -> note, Slack messages -> message, channels/projects -> project.
+    - action: 'read' or 'write'.
+    - allowed_role: one of {ROLES} (the role the rule applies to).
+    - effect: 'ALLOW' or 'DENY'.
+    Output only the JSON array.
     """
-    
+
     response = anthropic_client.messages.create(
-        model="claude-3-haiku-20240307",
-        max_tokens=200,
+        model="claude-haiku-4-5-20251001",
+        max_tokens=500,
         messages=[{"role": "user", "content": prompt}]
     )
-    
+
     try:
         content = response.content[0].text
         # Extract JSON from potential markdown blocks
@@ -37,23 +45,33 @@ def parse_policy(nlp_text: str, organization_id: str, db: Session) -> AccessPoli
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
             content = content.split("```")[1].strip()
-            
+
         data = json.loads(content)
-        
-        policy = AccessPolicy(
-            id=str(uuid.uuid4()),
-            organization_id=organization_id,
-            natural_language=nlp_text,
-            resource_type=data.get("resource_type", "all").lower(),
-            action=data.get("action", "read").lower(),
-            allowed_role=data.get("allowed_role"),
-            allowed_team=data.get("allowed_team"),
-            effect=data.get("effect", "ALLOW").upper()
-        )
-        db.add(policy)
+        if isinstance(data, dict):
+            data = [data]
+
+        policies = []
+        for rule in data:
+            resource_type = rule.get("resource_type", "").lower()
+            role = (rule.get("allowed_role") or "").upper()
+            if resource_type not in RESOURCE_TYPES or role not in ROLES:
+                continue
+            policy = AccessPolicy(
+                id=str(uuid.uuid4()),
+                organization_id=organization_id,
+                natural_language=nlp_text,
+                resource_type=resource_type,
+                action=rule.get("action", "read").lower(),
+                allowed_role=role,
+                effect=rule.get("effect", "ALLOW").upper()
+            )
+            db.add(policy)
+            policies.append(policy)
+
+        if not policies:
+            raise ValueError("No enforceable rule found in policy")
         db.commit()
-        db.refresh(policy)
-        return policy
+        return policies
     except Exception as e:
         raise ValueError(f"Failed to parse policy: {str(e)}")
 
